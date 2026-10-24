@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { extname, relative, resolve } from "node:path";
 
 export interface ImageFile {
@@ -27,11 +27,10 @@ function toImageFile(absPath: string, cwd: string, read: () => Buffer): ImageFil
   return { path: relative(cwd, absPath).replaceAll("\\", "/"), absPath, read };
 }
 
+const fromWorkingTree = (absPath: string, cwd: string) => toImageFile(absPath, cwd, () => readFileSync(absPath));
+
 export function explicitFiles(paths: string[], cwd: string): ImageFile[] {
-  return paths.filter(isImage).map((p) => {
-    const absPath = resolve(cwd, p);
-    return toImageFile(absPath, cwd, () => readFileSync(absPath));
-  });
+  return paths.filter(isImage).map((p) => fromWorkingTree(resolve(cwd, p), cwd));
 }
 
 /** Added, copied, modified or renamed files in the index, read from their staged blobs. */
@@ -41,12 +40,13 @@ export function stagedFiles(cwd: string): ImageFile[] {
   return paths.filter(isImage).map((p) => toImageFile(resolve(root, p), cwd, () => git(["cat-file", "blob", `:${p}`], root)));
 }
 
-/** Tracked and untracked-but-not-ignored files in the working tree. */
+/** Tracked and untracked-but-not-ignored files present in the working tree. */
 export function allFiles(cwd: string): ImageFile[] {
   const root = gitRoot(cwd);
   const paths = splitNul(git(["ls-files", "-z", "--cached", "--others", "--exclude-standard"], root));
-  return paths.filter(isImage).map((p) => {
-    const absPath = resolve(root, p);
-    return toImageFile(absPath, cwd, () => readFileSync(absPath));
-  });
+  return paths
+    .filter(isImage)
+    .map((p) => resolve(root, p))
+    .filter((absPath) => existsSync(absPath))
+    .map((absPath) => fromWorkingTree(absPath, cwd));
 }

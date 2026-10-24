@@ -162,4 +162,55 @@ describe("image-gate", () => {
     expect(result.stdout).toContain("src/assets/hero.png");
     expect(result.stdout).not.toContain("dist/hero.png");
   });
+
+  it("blocks an image whose extension does not match its actual format", () => {
+    const dir = makeRepo({ "photo.jpg": makePng(10, 10) });
+
+    const result = run(dir, "photo.jpg");
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toContain("photo.jpg · 无法识别的图片");
+  });
+
+  it("does not treat an <image> that references another SVG as an embedded bitmap", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg"><image href="icons/arrow.svg"/></svg>`;
+    const dir = makeRepo({ "composite.svg": svg });
+
+    const result = run(dir, "composite.svg");
+
+    expect(result.code).toBe(0);
+  });
+
+  it("override and allow globs match dot directories and are case-insensitive", () => {
+    const config = { allow: [{ path: "public/**/*.png", reason: "静态资源已人工确认" }] };
+    const dir = makeRepo({
+      ".imagegaterc.json": JSON.stringify(config),
+      "public/.well-known/LOGO.PNG": makePng(3000, 10),
+    });
+
+    const result = run(dir, "public/.well-known/LOGO.PNG");
+
+    expect(result.code).toBe(0);
+  });
+
+  it("reports a config error when an override has no files pattern", () => {
+    const config = { overrides: [{ maxDimension: 4000 }] };
+    const dir = makeRepo({ ".imagegaterc.json": JSON.stringify(config), "a.png": makePng(10, 10) });
+
+    const result = run(dir, "a.png");
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("配置错误");
+    expect(result.stderr).toContain("files");
+  });
+
+  it("--all skips tracked files that were deleted from the working tree", () => {
+    const dir = makeRepo({ "gone.png": makePng(10, 10) });
+    git(dir, "add", "gone.png");
+    rmSync(join(dir, "gone.png"));
+
+    const result = run(dir, "--all");
+
+    expect(result.code).toBe(0);
+  });
 });

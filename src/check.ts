@@ -1,5 +1,6 @@
 import { extname } from "node:path";
 import { imageSize } from "image-size";
+import type { ISizeCalculationResult } from "image-size/dist/types/interface.js";
 
 export interface Rules {
   maxBytes: number;
@@ -14,8 +15,17 @@ export interface Violation {
 }
 
 const KB = 1024;
-// An <image> element or a non-SVG data URI means the SVG carries a bitmap.
-const EMBEDDED_BITMAP = /<image[\s>]|data:image\/(?!svg)/i;
+// A non-SVG data URI, or an <image> (optionally namespaced) whose href is not another SVG.
+const EMBEDDED_BITMAP = /data:image\/(?!svg)|<(?:[\w-]+:)?image\b[^>]*?href\s*=\s*["'](?![^"']*\.svg(?:[?#][^"']*)?["'])/i;
+// Formats image-size may report for each extension; avif files carry their HEIF brand as the type.
+const TYPES_BY_EXTENSION: Record<string, string[]> = {
+  ".png": ["png"],
+  ".jpg": ["jpg"],
+  ".jpeg": ["jpg"],
+  ".webp": ["webp"],
+  ".gif": ["gif"],
+  ".avif": ["avif", "avis", "mif1", "msf1"],
+};
 
 const LFS_POINTER_PREFIX = "version https://git-lfs.github.com/spec/v1";
 
@@ -48,13 +58,14 @@ function checkSvg(path: string, content: Buffer, rules: Rules): Violation[] {
 
 function checkBitmap(path: string, content: Buffer, rules: Rules): Violation[] {
   const violations = checkBytes(path, content.length, rules.maxBytes, "转成 webp/avif 或降低导出质量");
-  let width = 0;
-  let height = 0;
+  let size: ISizeCalculationResult;
   try {
-    ({ width = 0, height = 0 } = imageSize(content));
+    size = imageSize(content);
   } catch {
     return [unrecognized(path)];
   }
+  const { width = 0, height = 0, type = "" } = size;
+  if (!TYPES_BY_EXTENSION[extname(path).toLowerCase()]?.includes(type)) return [unrecognized(path)];
   if (Math.max(width, height) > rules.maxDimension) {
     violations.push({
       path,

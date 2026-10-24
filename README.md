@@ -11,7 +11,7 @@ Pre-commit gate that blocks oversized images by pixel dimensions, file size, and
 | png / jpg / jpeg / webp / gif / avif | 文件大小 | 500 KB |
 | 同上 | 最长边像素 | 2560px |
 | svg | 文件大小 | 100 KB |
-| svg | 内嵌位图（`<image>` 元素或非 SVG 的 `data:image/...`） | 不允许 |
+| svg | 内嵌位图（引用非 SVG 资源的 `<image>`，或非 SVG 的 `data:image/...`） | 不允许 |
 
 - 无法解析的图片（损坏、扩展名与内容不符）会被拦截。
 - Git LFS 指针文件、已删除的文件会被跳过。
@@ -23,7 +23,7 @@ Pre-commit gate that blocks oversized images by pixel dimensions, file size, and
 npm i -D image-gate
 ```
 
-需要 Node.js ≥ 18。
+需要 Node.js ≥ 18.3。
 
 ## 用法
 
@@ -115,7 +115,7 @@ npx image-gate --all
 
 - `overrides`：按 glob 匹配文件，放宽或收紧阈值；多条都匹配时按顺序叠加。
 - `allow`：完全豁免匹配的文件，`reason` 必填。每次豁免都会出现在 diff 里，review 时能看到。
-- glob 和路径都相对于配置文件所在的目录。
+- glob 和路径都相对于配置文件所在的目录，不区分大小写，`**` 也会匹配以点开头的目录。
 - 对每个被检查的文件，从它所在目录往上找**最近的**一份配置，直到 git 根目录为止；不同层级的配置不会合并。monorepo 的子包可以有自己的阈值。
 
 ## 给 agent 的说明

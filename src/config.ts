@@ -43,9 +43,17 @@ function readJson(path: string) {
   }
 }
 
+const isNonEmptyString = (value: unknown) => typeof value === "string" && value.trim() !== "";
+
 function validate(config: Config, source: string): Config {
+  for (const entry of config.overrides ?? []) {
+    const patterns = Array.isArray(entry.files) ? entry.files : [entry.files];
+    if (patterns.length === 0 || !patterns.every(isNonEmptyString)) {
+      throw new ConfigError(`${source}: overrides 的每一项都需要 files（glob 字符串或字符串数组）`);
+    }
+  }
   for (const entry of config.allow ?? []) {
-    if (typeof entry.path !== "string" || typeof entry.reason !== "string" || !entry.reason.trim()) {
+    if (!isNonEmptyString(entry.path) || !isNonEmptyString(entry.reason)) {
       throw new ConfigError(`${source}: allow 的每一项都需要 path 和非空的 reason，以便 review 时看到豁免理由`);
     }
   }
@@ -59,6 +67,9 @@ function readConfigIn(dir: string): Config | undefined {
   const config = existsSync(pkg) ? readJson(pkg)[PACKAGE_KEY] : undefined;
   return config && validate(config, `${pkg}#${PACKAGE_KEY}`);
 }
+
+// Matches the case-insensitive extension filter, and lets `public/**` reach dot directories.
+const GLOB_OPTIONS = { dot: true, nocase: true };
 
 const cache = new Map<string, LoadedConfig | undefined>();
 
@@ -84,8 +95,8 @@ export function rulesFor(absPath: string): Rules | null {
   if (!found) return DEFAULT_RULES;
   const { overrides = [], allow = [], ...topLevel } = found.config;
   const relPath = relative(found.dir, absPath).replaceAll("\\", "/");
-  if (allow.some((a) => picomatch(a.path)(relPath))) return null;
+  if (allow.some((a) => picomatch(a.path, GLOB_OPTIONS)(relPath))) return null;
   return overrides
-    .filter((o) => picomatch(o.files)(relPath))
+    .filter((o) => picomatch(o.files, GLOB_OPTIONS)(relPath))
     .reduce((rules, { files: _files, ...patch }) => merge(rules, patch), merge(DEFAULT_RULES, topLevel));
 }
