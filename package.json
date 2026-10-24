@@ -1,0 +1,33 @@
+{
+  "name": "image-gate",
+  "version": "0.1.0",
+  "description": "Pre-commit gate that blocks oversized images by pixel dimensions, file size, and bitmap-embedded SVGs, with per-project thresholds.",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "image-gate": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && vitest run",
+    "prepublishOnly": "npm run typecheck && npm test"
+  },
+  "dependencies": {
+    "image-size": "^1.2.1",
+    "picomatch": "^4.0.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/picomatch": "^4.0.3",
+    "tsup": "^8.5.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}
