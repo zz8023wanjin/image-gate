@@ -1,40 +1,42 @@
 # image-gate
 
+English | [简体中文](README.zh-CN.md)
+
 Pre-commit gate that blocks oversized images by pixel dimensions, file size, and bitmap-embedded SVGs, with per-project thresholds.
 
-实现 Figma 设计稿时，agent 经常下载远超显示需要的大图，人和 agent 都容易忽略。image-gate 在提交前拦下这些图片，并给出可以照着执行的修复建议。
+When implementing Figma designs, agents often download images far larger than they will ever be displayed, and both humans and agents tend to miss it. image-gate stops these images before they are committed and tells you exactly how to fix them.
 
-## 检查规则
+## Rules
 
-| 类型 | 规则 | 默认阈值 |
+| Type | Rule | Default limit |
 | --- | --- | --- |
-| png / jpg / jpeg / webp / gif / avif | 文件大小 | 500 KB |
-| 同上 | 最长边像素 | 2560px |
-| svg | 文件大小 | 100 KB |
-| svg | 内嵌位图（引用非 SVG 资源的 `<image>`，或非 SVG 的 `data:image/...`） | 不允许 |
+| png / jpg / jpeg / webp / gif / avif | File size | 500 KB |
+| Same as above | Longest side in pixels | 2560px |
+| svg | File size | 100 KB |
+| svg | Embedded bitmap (an `<image>` referencing a non-SVG resource, or a non-SVG `data:image/...`) | Not allowed |
 
-- 无法解析的图片（损坏、扩展名与内容不符）会被拦截。
-- Git LFS 指针文件、已删除的文件会被跳过。
-- 超标即拦截（退出码 1）；配置或运行错误退出码为 2。
+- Images that cannot be decoded (corrupted, or extension doesn't match the content) are blocked.
+- Git LFS pointer files and deleted files are skipped.
+- Any violation fails the check (exit code 1); config or runtime errors exit with code 2.
 
-## 安装
+## Install
 
 ```sh
 npm i -D image-gate
 ```
 
-需要 Node.js ≥ 18.3。
+Requires Node.js ≥ 18.3.
 
-## 用法
+## Usage
 
 ```sh
-image-gate <文件...>   # 检查传入的文件（lint-staged 用这种方式）
-image-gate --staged    # 检查暂存区里新增或修改的图片，读的是暂存内容而非工作区
-image-gate --all       # 检查仓库里所有未被忽略的图片
-image-gate --json ...  # 以 JSON 数组输出违规项，便于 CI 或 agent 解析
+image-gate <files...>  # Check the given files (this is how lint-staged calls it)
+image-gate --staged    # Check images added or modified in the index, reading staged content, not the working tree
+image-gate --all       # Check every non-ignored image in the repository
+image-gate --json ...  # Print violations as a JSON array for CI or agents to parse
 ```
 
-输出示例：
+Example output (CLI messages are currently in Chinese):
 
 ```
 src/assets/banner.png · 3200×1800 · 超过最长边 2560px · 按显示尺寸的 2x 导出，或换用更小的切图
@@ -42,11 +44,13 @@ src/assets/banner.png · 3200×1800 · 超过最长边 2560px · 按显示尺寸
 image-gate: 1 个问题。确需保留时，在 .imagegaterc.json 的 allow 中登记该文件并写明 reason。
 ```
 
-## 接入 git hook
+Each line reads `path · problem · fix hint`. The example says the longest side exceeds 2560px and suggests exporting at 2x the display size or using a smaller slice; the footer tells you to register the file under `allow` in `.imagegaterc.json` with a `reason` if it really must stay.
 
-image-gate 不依赖任何 hook 管理器，选一种即可。
+## Git hooks
 
-**simple-git-hooks**（`package.json`）
+image-gate doesn't depend on any hook manager. Pick one:
+
+**simple-git-hooks** (`package.json`)
 
 ```json
 {
@@ -56,13 +60,13 @@ image-gate 不依赖任何 hook 管理器，选一种即可。
 }
 ```
 
-**husky**（`.husky/pre-commit`）
+**husky** (`.husky/pre-commit`)
 
 ```sh
 npx image-gate --staged
 ```
 
-**lefthook**（`lefthook.yml`）
+**lefthook** (`lefthook.yml`)
 
 ```yaml
 pre-commit:
@@ -71,7 +75,7 @@ pre-commit:
       run: npx image-gate --staged
 ```
 
-**lint-staged**（文件列表由 lint-staged 传入）
+**lint-staged** (lint-staged passes the file list)
 
 ```json
 {
@@ -81,23 +85,23 @@ pre-commit:
 }
 ```
 
-## 接入 CI
+## CI
 
-只检查本次分支改动的图片：
+Check only the images changed on the current branch:
 
 ```sh
 git diff --name-only --diff-filter=ACMR origin/master... | xargs npx image-gate
 ```
 
-或检查全仓库：
+Or check the whole repository:
 
 ```sh
 npx image-gate --all
 ```
 
-## 配置
+## Configuration
 
-在项目根目录创建 `.imagegaterc.json`，或者写在 `package.json` 的 `imageGate` 字段里。所有字段都是可选的：
+Create `.imagegaterc.json` in the project root, or put the config under the `imageGate` field of `package.json`. Every field is optional:
 
 ```json
 {
@@ -108,29 +112,29 @@ npx image-gate --all
     { "files": "public/hero/**", "maxDimension": 3840 }
   ],
   "allow": [
-    { "path": "public/og.png", "reason": "OG 图要求高质量，由设计确认" }
+    { "path": "public/og.png", "reason": "OG image needs high quality, approved by design" }
   ]
 }
 ```
 
-- `overrides`：按 glob 匹配文件，放宽或收紧阈值；多条都匹配时按顺序叠加。
-- `allow`：完全豁免匹配的文件，`reason` 必填。每次豁免都会出现在 diff 里，review 时能看到。
-- glob 和路径都相对于配置文件所在的目录，不区分大小写，`**` 也会匹配以点开头的目录。
-- 对每个被检查的文件，从它所在目录往上找**最近的**一份配置，直到 git 根目录为止；不同层级的配置不会合并。monorepo 的子包可以有自己的阈值。
+- `overrides`: match files by glob to loosen or tighten limits; when several match, they are applied in order.
+- `allow`: fully exempt matching files; `reason` is required. Every exemption shows up in the diff, so reviewers see it.
+- Globs and paths are relative to the directory containing the config file, case-insensitive, and `**` also matches dot directories.
+- For each checked file, the **nearest** config is found by walking up from its directory to the git root; configs at different levels are not merged. Packages in a monorepo can have their own limits.
 
-## 给 agent 的说明
+## Instructions for agents
 
-把下面这段复制到项目的 `CLAUDE.md` 或 `AGENTS.md` 里，让 agent 在下载图片时就遵守约束，不必等到提交时被拦截：
+Copy the section below into your project's `CLAUDE.md` or `AGENTS.md` so agents follow the limits when downloading images, instead of finding out at commit time:
 
 ```markdown
-## 图片资源
+## Image assets
 
-本项目用 image-gate 在提交前检查图片，超标会被拦截：位图不超过 500 KB、最长边不超过 2560px；SVG 不超过 100 KB 且不得内嵌位图。
+This project uses image-gate to check images before commit; oversized images are blocked: bitmaps must be at most 500 KB with the longest side at most 2560px; SVGs must be at most 100 KB and must not embed bitmaps.
 
-- 从 Figma 导出或下载图片时，按显示尺寸的 2x 导出，不要下载原图或 4x。
-- 照片类图片优先用 webp；图标和插画优先用纯矢量 SVG。
-- 每次新增图片后运行 `npx image-gate <文件>` 自查，按输出中的建议修复。
-- 图片确需超标时不要绕过门禁，在 `.imagegaterc.json` 的 `allow` 中登记并写明 `reason`，交给人 review。
+- When exporting or downloading images from Figma, export at 2x the display size, never the original or 4x.
+- Prefer webp for photos; prefer pure vector SVG for icons and illustrations.
+- After adding an image, run `npx image-gate <file>` and fix whatever the output suggests.
+- If an image really must exceed the limits, don't bypass the gate: add it to `allow` in `.imagegaterc.json` with a `reason` and leave it for human review.
 ```
 
 ## License

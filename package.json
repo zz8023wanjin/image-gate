@@ -4,6 +4,10 @@
   "description": "Pre-commit gate that blocks oversized images by pixel dimensions, file size, and bitmap-embedded SVGs, with per-project thresholds.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zz8023wanjin/image-gate.git"
+  },
   "bin": {
     "image-gate": "dist/cli.js"
   },
