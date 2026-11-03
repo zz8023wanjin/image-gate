@@ -155,6 +155,29 @@ npx image-gate --all
 - 图片确需超标时不要绕过门禁，在 `.imagegaterc.json` 的 `allow` 中登记并写明 `reason`，交给人 review。
 ```
 
+## 发版流程（维护者）
+
+发版由 GitHub Actions 通过 npm [Trusted Publishing](https://docs.npmjs.com/trusted-publishers) 完成，自带 provenance，不需要 npm token。Trusted Publisher 只被允许把版本提交到暂存区（stage），维护者用 2FA 确认后才会公开。
+
+1. 升版本号、提交并打 tag，然后推送：
+
+   ```sh
+   npm version patch -m "chore: release %s"   # 或 minor / major
+   git push origin master --follow-tags
+   ```
+
+2. 在 GitHub 上用新 tag（例如 `v0.1.2`）创建 Release。这会触发 `.github/workflows/publish.yml`：先检查 tag 与 `package.json` 的版本一致，再跑 typecheck 和测试，最后执行 `npm stage publish`。
+3. 在 npmjs.com 上用 2FA 确认暂存的版本，或者用命令行确认（需要 npm 11 及以上）：
+
+   ```sh
+   npx -y npm@11 stage list image-gate
+   npx -y npm@11 stage approve <stage-id> --otp=<验证码>
+   ```
+
+   如果这次构建有问题，改用 `npm stage reject <stage-id>` 拒绝，版本号不会被占用。
+
+如果 workflow 在暂存之前失败，修复问题后在 Actions 页面对该次运行点 **Re-run jobs** 即可，不需要重新打 tag。
+
 ## License
 
 MIT

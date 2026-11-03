@@ -155,6 +155,29 @@ This project uses image-gate to check images before commit; oversized images are
 - If an image really must exceed the limits, don't bypass the gate: add it to `allow` in `.imagegaterc.json` with a `reason` and leave it for human review.
 ```
 
+## Releasing (maintainers)
+
+Releases are published by GitHub Actions through npm [Trusted Publishing](https://docs.npmjs.com/trusted-publishers), with provenance and no npm token. The trusted publisher may only *stage* a version; it goes public after a maintainer approves it with 2FA.
+
+1. Bump the version, commit and tag it, then push:
+
+   ```sh
+   npm version patch -m "chore: release %s"   # or minor / major
+   git push origin master --follow-tags
+   ```
+
+2. Create a GitHub Release from the new tag (e.g. `v0.1.2`). This runs `.github/workflows/publish.yml`, which checks that the tag matches `package.json`, runs typecheck and tests, and runs `npm stage publish`.
+3. Approve the staged version with 2FA on npmjs.com, or from the command line (needs npm 11+):
+
+   ```sh
+   npx -y npm@11 stage list image-gate
+   npx -y npm@11 stage approve <stage-id> --otp=<code>
+   ```
+
+   To drop a bad build instead, run `npm stage reject <stage-id>`; the version number stays unused.
+
+If the workflow fails before staging, fix the cause and use **Re-run jobs** on the run; there is no need to retag.
+
 ## License
 
 MIT
