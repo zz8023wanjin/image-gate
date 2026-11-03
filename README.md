@@ -25,7 +25,7 @@ When implementing Figma designs, agents often download images far larger than th
 npm i -D image-gate
 ```
 
-Requires Node.js ≥ 18.3.
+Requires Node.js ≥ 22.
 
 ## Usage
 

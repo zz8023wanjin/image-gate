@@ -25,7 +25,7 @@
 npm i -D image-gate
 ```
 
-需要 Node.js ≥ 18.3。
+需要 Node.js ≥ 22。
 
 ## 用法
 

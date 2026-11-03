@@ -1,0 +1,31 @@
+name: Publish to npm
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write # lets npm Trusted Publishing verify this workflow via OIDC; no NPM_TOKEN needed
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@11 # Trusted Publishing needs npm >= 11.5.1
+      - name: Check the release tag matches package.json
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          expected="v$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$expected" ]; then
+            echo "Release tag $TAG does not match package.json version $expected" >&2
+            exit 1
+          fi
+      - run: npm ci
+      - run: npm publish # runs prepublishOnly first: typecheck + test
