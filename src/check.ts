@@ -1,6 +1,7 @@
 import { extname } from "node:path";
 import { imageSize } from "image-size";
 import type { ISizeCalculationResult } from "image-size/dist/types/interface.js";
+import { messages } from "./messages.js";
 
 export interface Rules {
   maxBytes: number;
@@ -8,13 +9,19 @@ export interface Rules {
   svg: { maxBytes: number; allowEmbeddedBitmap: boolean };
 }
 
+/** Named after the config field that sets the limit, so callers know what to fix or override. */
+type Rule = "maxBytes" | "maxDimension" | "svg.maxBytes" | "svg.allowEmbeddedBitmap" | "unrecognized";
+
 export interface Violation {
   path: string;
+  rule: Rule;
+  /** Measured value (bytes, or pixels of the longest side) for limit rules. */
+  actual?: number;
+  limit?: number;
   problem: string;
   hint: string;
 }
 
-const KB = 1024;
 // A non-SVG data URI, or an <image> (optionally namespaced) whose href is not another SVG.
 const EMBEDDED_BITMAP = /data:image\/(?!svg)|<(?:[\w-]+:)?image\b[^>]*?href\s*=\s*["'](?![^"']*\.svg(?:[?#][^"']*)?["'])/i;
 // Formats image-size may report for each extension; avif files carry their HEIF brand as the type.
@@ -29,35 +36,35 @@ const TYPES_BY_EXTENSION: Record<string, string[]> = {
 
 const LFS_POINTER_PREFIX = "version https://git-lfs.github.com/spec/v1";
 
-const formatKb = (bytes: number) => `${Math.round(bytes / KB)} KB`;
-
-function checkBytes(path: string, size: number, maxBytes: number, hint: string): Violation[] {
+function checkBytes(path: string, size: number, maxBytes: number, rule: Rule, hint: string): Violation[] {
   if (size <= maxBytes) return [];
-  return [{ path, problem: `${formatKb(size)} · 超过 ${formatKb(maxBytes)}`, hint }];
+  return [{ path, rule, actual: size, limit: maxBytes, problem: messages.tooLarge(size, maxBytes), hint }];
 }
 
 const unrecognized = (path: string): Violation => ({
   path,
-  problem: "无法识别的图片",
-  hint: "文件已损坏或扩展名与实际格式不符，请重新导出",
+  rule: "unrecognized",
+  problem: messages.unrecognized,
+  hint: messages.unrecognizedHint,
 });
 
 function checkSvg(path: string, content: Buffer, rules: Rules): Violation[] {
   const text = content.toString("utf8");
   if (!/<svg[\s>]/i.test(text)) return [unrecognized(path)];
-  const violations = checkBytes(path, content.length, rules.svg.maxBytes, "用 svgo 压缩，或简化 Figma 中的路径后重新导出");
+  const violations = checkBytes(path, content.length, rules.svg.maxBytes, "svg.maxBytes", messages.svgBytesHint);
   if (!rules.svg.allowEmbeddedBitmap && EMBEDDED_BITMAP.test(text)) {
     violations.push({
       path,
-      problem: "内嵌位图 · SVG 不允许内嵌位图",
-      hint: "把位图单独导出为 webp/png 引用，SVG 只保留矢量部分",
+      rule: "svg.allowEmbeddedBitmap",
+      problem: messages.embeddedBitmap,
+      hint: messages.embeddedBitmapHint,
     });
   }
   return violations;
 }
 
 function checkBitmap(path: string, content: Buffer, rules: Rules): Violation[] {
-  const violations = checkBytes(path, content.length, rules.maxBytes, "转成 webp/avif 或降低导出质量");
+  const violations = checkBytes(path, content.length, rules.maxBytes, "maxBytes", messages.bitmapBytesHint);
   let size: ISizeCalculationResult;
   try {
     size = imageSize(content);
@@ -66,11 +73,15 @@ function checkBitmap(path: string, content: Buffer, rules: Rules): Violation[] {
   }
   const { width = 0, height = 0, type = "" } = size;
   if (!TYPES_BY_EXTENSION[extname(path).toLowerCase()]?.includes(type)) return [unrecognized(path)];
-  if (Math.max(width, height) > rules.maxDimension) {
+  const longestSide = Math.max(width, height);
+  if (longestSide > rules.maxDimension) {
     violations.push({
       path,
-      problem: `${width}×${height} · 超过最长边 ${rules.maxDimension}px`,
-      hint: "按显示尺寸的 2x 导出，或换用更小的切图",
+      rule: "maxDimension",
+      actual: longestSide,
+      limit: rules.maxDimension,
+      problem: messages.tooWide(width, height, rules.maxDimension),
+      hint: messages.tooWideHint,
     });
   }
   return violations;

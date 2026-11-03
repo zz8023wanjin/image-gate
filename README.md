@@ -36,15 +36,32 @@ image-gate --all       # Check every non-ignored image in the repository
 image-gate --json ...  # Print violations as a JSON array for CI or agents to parse
 ```
 
-Example output (CLI messages are currently in Chinese):
+Example output:
 
 ```
-src/assets/banner.png · 3200×1800 · 超过最长边 2560px · 按显示尺寸的 2x 导出，或换用更小的切图
+src/assets/banner.png · 3200×1800 · longest side exceeds 2560px · export at 2x the display size, or use a smaller slice
 
-image-gate: 1 个问题。确需保留时，在 .imagegaterc.json 的 allow 中登记该文件并写明 reason。
+image-gate: 1 problem(s). If an image really must stay, register it under allow in .imagegaterc.json with a reason.
 ```
 
-Each line reads `path · problem · fix hint`. The example says the longest side exceeds 2560px and suggests exporting at 2x the display size or using a smaller slice; the footer tells you to register the file under `allow` in `.imagegaterc.json` with a `reason` if it really must stay.
+Each line reads `path · problem · fix hint`. Messages are in Chinese when the locale (`LC_ALL`, `LC_MESSAGES`, `LANG`, or the OS locale if none is set) starts with `zh`, and in English otherwise.
+
+With `--json`, each violation also carries structured fields, so CI and agents don't have to parse the message:
+
+```json
+[
+  {
+    "path": "src/assets/banner.png",
+    "rule": "maxDimension",
+    "actual": 3200,
+    "limit": 2560,
+    "problem": "3200×1800 · longest side exceeds 2560px",
+    "hint": "export at 2x the display size, or use a smaller slice"
+  }
+]
+```
+
+`rule` is one of `maxBytes`, `maxDimension`, `svg.maxBytes`, `svg.allowEmbeddedBitmap` (named after the config field that sets the limit) or `unrecognized`. `actual` and `limit` are in bytes for the size rules and in pixels of the longest side for `maxDimension`; the other rules omit them.
 
 ## Git hooks
 
@@ -121,6 +138,7 @@ Create `.imagegaterc.json` in the project root, or put the config under the `ima
 - `allow`: fully exempt matching files; `reason` is required. Every exemption shows up in the diff, so reviewers see it.
 - Globs and paths are relative to the directory containing the config file, case-insensitive, and `**` also matches dot directories.
 - For each checked file, the **nearest** config is found by walking up from its directory to the git root; configs at different levels are not merged. Packages in a monorepo can have their own limits.
+- The config is validated strictly: limits must be positive integers, `allowEmbeddedBitmap` must be a boolean, and unknown (e.g. misspelled) fields are rejected. Any of these exits with code 2 instead of silently using the wrong limit.
 
 ## Instructions for agents
 

@@ -44,6 +44,25 @@ src/assets/banner.png · 3200×1800 · 超过最长边 2560px · 按显示尺寸
 image-gate: 1 个问题。确需保留时，在 .imagegaterc.json 的 allow 中登记该文件并写明 reason。
 ```
 
+每行的格式是 `路径 · 问题 · 修复建议`。语言环境（`LC_ALL`、`LC_MESSAGES`、`LANG`，都未设置时取系统语言）以 `zh` 开头时输出中文，否则输出英文。
+
+`--json` 输出的每个违规项还带有结构化字段，CI 和 agent 不必解析文字：
+
+```json
+[
+  {
+    "path": "src/assets/banner.png",
+    "rule": "maxDimension",
+    "actual": 3200,
+    "limit": 2560,
+    "problem": "3200×1800 · 超过最长边 2560px",
+    "hint": "按显示尺寸的 2x 导出，或换用更小的切图"
+  }
+]
+```
+
+`rule` 取值为 `maxBytes`、`maxDimension`、`svg.maxBytes`、`svg.allowEmbeddedBitmap`（与设置该阈值的配置字段同名）或 `unrecognized`。`actual` 和 `limit` 在大小类规则中单位是字节，在 `maxDimension` 中是最长边像素；其他规则不带这两个字段。
+
 ## 接入 git hook
 
 image-gate 不依赖任何 hook 管理器，选一种即可。
@@ -119,6 +138,7 @@ npx image-gate --all
 - `allow`：完全豁免匹配的文件，`reason` 必填。每次豁免都会出现在 diff 里，review 时能看到。
 - glob 和路径都相对于配置文件所在的目录，不区分大小写，`**` 也会匹配以点开头的目录。
 - 对每个被检查的文件，从它所在目录往上找**最近的**一份配置，直到 git 根目录为止；不同层级的配置不会合并。monorepo 的子包可以有自己的阈值。
+- 配置会被严格校验：阈值必须是正整数，`allowEmbeddedBitmap` 必须是布尔值，未知字段（例如拼错的字段名）直接报错。出现这些情况时退出码为 2，不会带着错误的阈值继续运行。
 
 ## 给 agent 的说明
 

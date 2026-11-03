@@ -1,9 +1,42 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { git, makePng, makeRepo, run, writeFiles } from "./helpers.js";
 
 describe("image-gate", () => {
+  // The CLI inherits this locale; most cases assert the Chinese messages.
+  beforeEach(() => vi.stubEnv("LC_ALL", "zh_CN.UTF-8"));
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("prints English messages under a non-Chinese locale", () => {
+    vi.stubEnv("LC_ALL", "en_US.UTF-8");
+    const dir = makeRepo({ "hero.png": makePng(3000, 10) });
+
+    const result = run(dir, "hero.png");
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toContain("hero.png · 3000×10 · longest side exceeds 2560px");
+  });
+
+  it("reports a config error when a limit is not a positive integer", () => {
+    const config = { overrides: [{ files: "public/**", maxDimension: "4000" }] };
+    const dir = makeRepo({ ".imagegaterc.json": JSON.stringify(config), "a.png": makePng(10, 10) });
+
+    const result = run(dir, "a.png");
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("overrides[0].maxDimension");
+  });
+
+  it("reports a config error for an unknown field such as a misspelled limit", () => {
+    const dir = makeRepo({ ".imagegaterc.json": JSON.stringify({ maxDimensions: 4000 }), "a.png": makePng(10, 10) });
+
+    const result = run(dir, "a.png");
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("maxDimensions");
+  });
+
   it("blocks an image whose longest side exceeds the default limit", () => {
     const dir = makeRepo({ "hero.png": makePng(3000, 10), "icon.png": makePng(64, 64) });
 
@@ -145,7 +178,14 @@ describe("image-gate", () => {
 
     expect(result.code).toBe(1);
     expect(JSON.parse(result.stdout)).toEqual([
-      { path: "hero.png", problem: "3000×10 · 超过最长边 2560px", hint: expect.any(String) },
+      {
+        path: "hero.png",
+        rule: "maxDimension",
+        actual: 3000,
+        limit: 2560,
+        problem: "3000×10 · 超过最长边 2560px",
+        hint: expect.any(String),
+      },
     ]);
   });
 

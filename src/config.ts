@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import picomatch from "picomatch";
 import type { Rules } from "./check.js";
+import { messages } from "./messages.js";
 
 type PartialRules = Partial<Omit<Rules, "svg">> & { svg?: Partial<Rules["svg"]> };
 
@@ -39,33 +40,72 @@ function readJson(path: string) {
   try {
     return JSON.parse(readFileSync(path, "utf8"));
   } catch (error) {
-    throw new ConfigError(`${path}: 不是合法的 JSON（${(error as Error).message}）`);
+    throw new ConfigError(`${path}: ${messages.invalidJson((error as Error).message)}`);
   }
 }
 
 const isNonEmptyString = (value: unknown) => typeof value === "string" && value.trim() !== "";
+const isPositiveInteger = (value: unknown) => Number.isInteger(value) && (value as number) > 0;
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
 
-function validate(config: Config, source: string): Config {
-  for (const entry of config.overrides ?? []) {
+const LIMIT_FIELDS = ["maxBytes", "maxDimension"];
+const RULE_FIELDS = [...LIMIT_FIELDS, "svg"];
+const SVG_FIELDS = ["maxBytes", "allowEmbeddedBitmap"];
+
+/**
+ * Rejects unknown fields and wrongly typed limits up front: a misspelled field would otherwise be ignored,
+ * and a string limit would compare as NaN and block every image.
+ */
+function validate(config: unknown, source: string): Config {
+  const fail = (detail: string): never => {
+    throw new ConfigError(`${source}: ${detail}`);
+  };
+  const checkKnownFields = (value: Record<string, unknown>, prefix: string, known: string[]) => {
+    const unknownField = Object.keys(value).find((key) => !known.includes(key));
+    if (unknownField) fail(messages.unknownField(prefix + unknownField));
+  };
+  const checkRules = (rules: Record<string, unknown>, prefix: string, extraFields: string[]) => {
+    checkKnownFields(rules, prefix, [...RULE_FIELDS, ...extraFields]);
+    for (const key of LIMIT_FIELDS) {
+      if (key in rules && !isPositiveInteger(rules[key])) fail(messages.notPositiveInteger(prefix + key));
+    }
+    if (!("svg" in rules)) return;
+    const svg = rules.svg;
+    if (!isPlainObject(svg)) return fail(messages.notObject(`${prefix}svg`));
+    checkKnownFields(svg, `${prefix}svg.`, SVG_FIELDS);
+    if ("maxBytes" in svg && !isPositiveInteger(svg.maxBytes)) fail(messages.notPositiveInteger(`${prefix}svg.maxBytes`));
+    if ("allowEmbeddedBitmap" in svg && typeof svg.allowEmbeddedBitmap !== "boolean") {
+      fail(messages.notBoolean(`${prefix}svg.allowEmbeddedBitmap`));
+    }
+  };
+
+  if (!isPlainObject(config)) return fail(messages.configNotObject);
+  const entriesOf = (key: "overrides" | "allow") => {
+    const entries = config[key] ?? [];
+    if (!Array.isArray(entries)) return fail(messages.notArray(key));
+    return entries.map((entry, i) => (isPlainObject(entry) ? entry : fail(messages.notObject(`${key}[${i}]`))));
+  };
+
+  checkRules(config, "", ["overrides", "allow"]);
+  entriesOf("overrides").forEach((entry, i) => {
+    checkRules(entry, `overrides[${i}].`, ["files"]);
     const patterns = Array.isArray(entry.files) ? entry.files : [entry.files];
-    if (patterns.length === 0 || !patterns.every(isNonEmptyString)) {
-      throw new ConfigError(`${source}: overrides 的每一项都需要 files（glob 字符串或字符串数组）`);
-    }
-  }
-  for (const entry of config.allow ?? []) {
-    if (!isNonEmptyString(entry.path) || !isNonEmptyString(entry.reason)) {
-      throw new ConfigError(`${source}: allow 的每一项都需要 path 和非空的 reason，以便 review 时看到豁免理由`);
-    }
-  }
-  return config;
+    if (patterns.length === 0 || !patterns.every(isNonEmptyString)) fail(messages.overrideNeedsFiles(`overrides[${i}]`));
+  });
+  entriesOf("allow").forEach((entry, i) => {
+    checkKnownFields(entry, `allow[${i}].`, ["path", "reason"]);
+    if (!isNonEmptyString(entry.path) || !isNonEmptyString(entry.reason)) fail(messages.allowNeedsReason(`allow[${i}]`));
+  });
+  return config as Config;
 }
 
 function readConfigIn(dir: string): Config | undefined {
   const rc = join(dir, RC_FILE);
   if (existsSync(rc)) return validate(readJson(rc), rc);
   const pkg = join(dir, "package.json");
-  const config = existsSync(pkg) ? readJson(pkg)[PACKAGE_KEY] : undefined;
-  return config && validate(config, `${pkg}#${PACKAGE_KEY}`);
+  const config = existsSync(pkg) ? readJson(pkg)?.[PACKAGE_KEY] : undefined;
+  return config === undefined ? undefined : validate(config, `${pkg}#${PACKAGE_KEY}`);
 }
 
 // Matches the case-insensitive extension filter, and lets `public/**` reach dot directories.
