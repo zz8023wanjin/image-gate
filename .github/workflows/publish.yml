@@ -1,4 +1,4 @@
-name: Publish to npm
+name: Stage npm release
 
 on:
   release:
@@ -17,7 +17,7 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-      - run: npm install -g npm@11 # Trusted Publishing needs npm >= 11.5.1
+      - run: npm install -g npm@11 # Trusted Publishing and `npm stage` need a recent npm 11
       - name: Check the release tag matches package.json
         env:
           TAG: ${{ github.event.release.tag_name }}
@@ -28,4 +28,7 @@ jobs:
             exit 1
           fi
       - run: npm ci
-      - run: npm publish # runs prepublishOnly first: typecheck + test
+      # The trusted publisher may only stage: the version goes public after a maintainer
+      # approves it with 2FA on npmjs.com (or `npm stage approve <stage-id>`).
+      # Runs prepublishOnly first: typecheck + test.
+      - run: npm stage publish
